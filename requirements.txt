@@ -1,0 +1,6 @@
+discord.py
+flask
+requests
+cinemagoer
+deep-translator
+pytz
