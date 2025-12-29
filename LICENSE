@@ -1,0 +1,38 @@
+PSBDx SOURCE CODE LICENSE
+Version 1.0
+
+Copyright (c) 2025 PSBDx
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+1. CORE ALGORITHM INTEGRITY:
+   The core algorithms, defined as the logic used for data fetching, scoring
+   aggregation, and the encrypted attribution functions (specifically the
+   `_decrypt_about_data` function and its payloads), MUST NOT be modified,
+   reverse-engineered, decrypted, or altered in any way.
+
+2. ATTRIBUTION PROTECTION:
+   The `/about` command functionality must remain intact and unaltered in any
+   distribution or fork of this Software. The encrypted credit strings identifying
+   "PSBDx" as the original developer must not be removed or obscured.
+
+3. ALLOWED MODIFICATIONS:
+   Users are permitted to modify:
+   - Configuration settings (Tokens, Channel IDs, APIs).
+   - User-facing messages (except the /about command).
+   - Hosting configurations (Flask, Heroku, Docker setup).
+   - General slash command descriptions (except /about).
+
+4. DISCLAIMER:
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
