@@ -29,8 +29,8 @@ Follow these steps to host the bot on your own machine or server.
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/YourUsername/Anime-Master-Bot.git
-cd Anime-Master-Bot
+git clone [https://github.com/psbdx-pvt-ltd/Anime-Master-bot.git](https://github.com/psbdx-pvt-ltd/Anime-Master-bot.git)
+cd Anime-Master-bot
 ```
 
 ### 2. Install Dependencies
@@ -99,5 +99,5 @@ This project is Open Source, allowing you to modify functionality, commands, and
 ---
 
 <p align="center">
-  Made with 🦊 by <a href="[https://github.com/YourUsername](https://github.com/YourUsername)">PSBDx</a>
+  Made with 🦊 by <a href="https://github.com/psbdx-pvt-ltd">PSBDx</a>
 </p>
