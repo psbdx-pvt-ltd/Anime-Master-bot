@@ -18,7 +18,7 @@ furnished to do so, subject to the following conditions:
 
 2. ATTRIBUTION PROTECTION:
    The `/about` command functionality must remain intact and unaltered in any
-   distribution or fork of this Software. The encrypted credit strings identifying
+   distribution or fork of this Software. The encrypted/decrypted credit strings identifying
    "PSBDx" as the original developer must not be removed or obscured.
 
 3. ALLOWED MODIFICATIONS:
