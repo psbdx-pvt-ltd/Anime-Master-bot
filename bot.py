@@ -15,7 +15,7 @@ from imdb import Cinemagoer
 from deep_translator import GoogleTranslator
 
 # --- CONFIGURATION ---
-# Load secrets from Environment Variables for security (Open Source Best Practice)
+# Load secrets from Environment Variables
 TOKEN = os.getenv("BOT_TOKEN")
 
 try:
@@ -24,6 +24,11 @@ except ValueError:
     ADMN_ID = 0
 
 PORT = int(os.environ.get('PORT', 5000))
+
+# --- LANGUAGE SETTINGS ---
+# Change this code to set the bot's translation language.
+# Examples: 'bn' (Bangla), 'en' (English), 'es' (Spanish), 'ja' (Japanese)
+CURRENT_LANGUAGE = "bn" 
 
 # Configure Logging
 logging.basicConfig(
@@ -35,35 +40,26 @@ logger = logging.getLogger(__name__)
 # --- GLOBAL VARIABLES ---
 LOCKED_CHANNEL_ID = None
 
-# --- PROTECTION ALGORITHM ---
-# This block contains the protected/encrypted details about the developer and license.
-# As per license requirements, this function and the encrypted string should not be modified.
-def _decrypt_about_data():
-    # This string is Base64 encoded JSON data containing the version and credits.
-    # Editing this string will break the /about command integrity.
-    _encrypted_payload = (
-        "eyJWZXJzaW9uIENvZGUiOiAiOS4xIiwgIlZlcnNpb24gdHlwZSI6ICJPcGVuIFNvdXJjZSIsICJE"
-        "ZXZlbG9wZXIgTmFtZSI6ICJQU0JEeCIs "
-        "IlVzZXIgTGljZW5zZSBUeXBlIjogIk9wZW4gU291cmNlIiwgIk9wZW4gU291cmNlIENvbW1lbnQi"
-        "OiAidGhlIGN1cnJlbnQgZGV2ZWxvZXByIGNhbiBlZGl0IHRoZSBib3QgY29kZSBhbmQgY2hhbmdl"
-        "IGNvbmZpZyBtZXRob2RzIGJ1dCBkZXZlbG9wZXIgaGFzIG5vIHBlcm1pc3Npb24gdG8gZWRpdCB0"
-        "aGUgYWxnb3JpdGhtJ3MgZnVuY3Rpb25zIG9yIHRoZSBlbmNydXB0ZWQgbWVzc2FnZXMvY29kZXMu"
-        "In0="
-    )
-    try:
-        # Decrypting (Decoding) the payload for display
-        decoded_bytes = base64.b64decode(_encrypted_payload)
-        return json.loads(decoded_bytes.decode('utf-8'))
-    except Exception as e:
-        logger.error(f"Integrity Check Failed: {e}")
-        return {"Error": "License Data Corrupted"}
+# --- PROTECTION ALGORITHM (MODIFIED) ---
+def _get_about_data():
+    """
+    Returns the developer and version info.
+    Now un-encrypted for Version 9.2.
+    """
+    return {
+        "Version Code": "9.2",
+        "Version type": "Open Source (Custom)",
+        "Developer Name": "PSBDx",
+        "User License Type": "Open Source",
+        "Open Source Comment": "Custom language configuration enabled."
+    }
 
 # --- FLASK SERVER (Keep Alive) ---
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Anime Master Bot is Running! (Open Source Version)"
+    return f"Anime Master Bot v9.2 is Running! ({CURRENT_LANGUAGE.upper()} Mode)"
 
 def run_flask():
     app.run(host='0.0.0.0', port=PORT)
@@ -80,21 +76,30 @@ def get_ping(url):
     except Exception as e:
         return "N/A", False, str(e)
 
-def translate_to_bangla(text):
-    """Translates English text to Bangla using Google Translate"""
-    if not text: return "কোন বর্ণনা পাওয়া যায়নি।"
+def translate_text(text):
+    """Translates text to the configured CURRENT_LANGUAGE"""
+    if not text: return "No description available."
+    
+    # If target is English and text is already likely English, skip (simple check)
+    if CURRENT_LANGUAGE == 'en':
+        return text
+
     try:
         short_text = (text[:400] + '...') if len(text) > 400 else text
-        return GoogleTranslator(source='auto', target='bn').translate(short_text)
+        return GoogleTranslator(source='auto', target=CURRENT_LANGUAGE).translate(short_text)
     except:
         return text
 
 # --- DATA FETCHING FUNCTIONS ---
 
-def get_mal_full_data(name):
-    """Fetches detailed anime data from MyAnimeList via Jikan API"""
+def get_mal_full_data(name, season=None):
+    """
+    Fetches detailed anime data from MyAnimeList via Jikan API.
+    Now supports an optional 'season' parameter.
+    """
+    search_query = f"{name} {season}" if season else name
     try:
-        r = requests.get(f"https://api.jikan.moe/v4/anime?q={name}&limit=1", timeout=5)
+        r = requests.get(f"https://api.jikan.moe/v4/anime?q={search_query}&limit=1", timeout=5)
         if r.status_code == 200 and r.json()['data']:
             item = r.json()['data'][0]
             
@@ -169,8 +174,8 @@ bot = AnimeMasterBot()
 @bot.event
 async def on_ready():
     logger.info(f'Logged in as {bot.user} (ID: {bot.user.id})')
-    # Updated status to show the primary command
-    await bot.change_presence(activity=discord.Game(name="/find [anime]"))
+    # Updated status to show the language in the status
+    await bot.change_presence(activity=discord.Game(name=f"/find [anime] | {CURRENT_LANGUAGE.upper()}"))
 
 # --- ADMIN COMMANDS ---
 
@@ -198,18 +203,17 @@ async def unlock_all_slash(interaction: discord.Interaction):
 
 # --- PUBLIC SLASH COMMANDS ---
 
-@bot.tree.command(name="about", description="View developer and license information (Encrypted/Protected)")
+@bot.tree.command(name="about", description="View developer and license information")
 async def about_slash(interaction: discord.Interaction):
     """
-    Displays the encrypted/obfuscated about information.
-    The source of this data is protected in _decrypt_about_data()
+    Displays the about information (Un-encrypted).
     """
     if LOCKED_CHANNEL_ID and interaction.channel_id != LOCKED_CHANNEL_ID:
         await interaction.response.send_message(f"⚠️ I am restricted to <#{LOCKED_CHANNEL_ID}>.", ephemeral=True)
         return
 
-    # Decrypt the data at runtime
-    data = _decrypt_about_data()
+    # Get plain data
+    data = _get_about_data()
     
     embed = discord.Embed(
         title="🤖 About Anime Master",
@@ -217,14 +221,14 @@ async def about_slash(interaction: discord.Interaction):
         color=0x2b2d31 # Dark embed color
     )
     
-    # Dynamically add fields from the decrypted JSON
+    # Dynamically add fields
     for key, value in data.items():
         if key == "Open Source Comment":
-            embed.add_field(name="⚖️ Legal/Comment", value=f"*{value}*", inline=False)
+            embed.add_field(name="⚖️ Note", value=f"*{value}*", inline=False)
         else:
             embed.add_field(name=key, value=f"`{value}`", inline=True)
             
-    embed.set_footer(text="Verified Open Source Build | Integrity Check Passed")
+    embed.set_footer(text="Verified Open Source Build | Version 9.2")
     
     await interaction.response.send_message(embed=embed)
 
@@ -239,7 +243,9 @@ async def start_slash(interaction: discord.Interaction):
         f"👋 Hello **{user_name}**! 🍥\n"
         f"I am your Anime Assistant.\n\n"
         f"✅ **Usage:** Type `/find` followed by an anime name.\n"
-        f"I will fetch ratings, studio info, genres, and translate the description to Bangla."
+        f"✨ **Season:** You can add a specific season in the search (e.g., 'Season 2')!\n"
+        f"🌐 **Language:** Currently set to **{CURRENT_LANGUAGE.upper()}**.\n"
+        f"I will fetch ratings, studio info, genres, and translate the description."
     )
     await interaction.response.send_message(msg)
 
@@ -256,15 +262,15 @@ async def sources_slash(interaction: discord.Interaction):
             "🔹 **AniList** (GraphQL)\n"
             "🔹 **Kitsu** (API)\n"
             "🔹 **IMDb** (Cinemagoer)\n"
-            "🔹 **Translation:** Google Translate"
+            f"🔹 **Translation:** Google Translate ({CURRENT_LANGUAGE})"
         ),
         color=0x3498db
     )
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="find", description="Search for an anime, get info, ratings & Bangla description")
-@app_commands.describe(anime_name="The name of the anime you want to search for")
-async def find_slash(interaction: discord.Interaction, anime_name: str):
+@bot.tree.command(name="find", description="Search for an anime, get info, ratings & translated description")
+@app_commands.describe(anime_name="The name of the anime", season="Optional: The specific season (e.g., 'Season 2')")
+async def find_slash(interaction: discord.Interaction, anime_name: str, season: str = None):
     # 1. CHECK LOCK
     if LOCKED_CHANNEL_ID and interaction.channel_id != LOCKED_CHANNEL_ID:
         await interaction.response.send_message(f"❌ Please use this command in <#{LOCKED_CHANNEL_ID}>!", ephemeral=True)
@@ -274,10 +280,10 @@ async def find_slash(interaction: discord.Interaction, anime_name: str):
     await interaction.response.defer()
 
     # 3. FETCH DATA
-    mal = get_mal_full_data(anime_name)
+    mal = get_mal_full_data(anime_name, season)
     
     if not mal:
-        await interaction.followup.send("❌ Anime not found. Please check the spelling.")
+        await interaction.followup.send("❌ Anime not found. Please check the spelling or season.")
         return
 
     # Fetch extra data
@@ -300,7 +306,7 @@ async def find_slash(interaction: discord.Interaction, anime_name: str):
 
     # Streaming & Translate
     net, cru = get_streaming_links(mal['mal_id'])
-    desc_bn = translate_to_bangla(mal['synopsis'])
+    desc_translated = translate_text(mal['synopsis'])
 
     # 4. CALCULATE SCORES
     scores = []
@@ -314,7 +320,7 @@ async def find_slash(interaction: discord.Interaction, anime_name: str):
     # 5. BUILD EMBED
     embed = discord.Embed(
         title=f"🎬 {mal['title']}",
-        description=f"**Bangla Description:**\n{desc_bn}",
+        description=f"**Description ({CURRENT_LANGUAGE.upper()}):**\n{desc_translated}",
         color=0xe67e22
     )
     
@@ -395,6 +401,7 @@ async def check_command(ctx, cmd: str = None):
             f"🤖 **Bot Status:** ✅ Online\n"
             f"🔒 **Restrictions:** {lock_status}\n"
             f"📶 **API Latency:** {discord_ping}\n"
+            f"🌐 **Language:** {CURRENT_LANGUAGE.upper()}\n"
             "-----------------------------\n"
             "✅ **All Systems Operational**"
         )
