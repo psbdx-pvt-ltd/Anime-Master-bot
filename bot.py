@@ -5,6 +5,7 @@ import threading
 import time
 import base64
 import json
+import io 
 from datetime import datetime
 import pytz 
 from flask import Flask
@@ -30,6 +31,11 @@ PORT = int(os.environ.get('PORT', 5000))
 # Examples: 'bn' (Bangla), 'en' (English), 'es' (Spanish), 'ja' (Japanese)
 CURRENT_LANGUAGE = "bn" 
 
+# --- DYNAMIC STORAGE CONFIGURATION ---
+# This is the "switch". If DSCRD_DB env var exists, use Discord DB. If not, use Local.
+DSCRD_DB_ID = os.getenv("DSCRD_DB")
+USE_DISCORD_DB = True if DSCRD_DB_ID else False
+
 # Configure Logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -37,21 +43,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- GLOBAL VARIABLES ---
-LOCKED_CHANNEL_ID = None
+# --- GLOBAL STATE ---
+# We store state here now instead of just loose variables
+BOT_DATA = {
+    "locked_channel_id": None
+}
 
 # --- PROTECTION ALGORITHM (MODIFIED) ---
 def _get_about_data():
     """
     Returns the developer and version info.
-    Now un-encrypted for Version 9.2.
+    Now un-encrypted for Version 9.3.
     """
     return {
-        "Version Code": "9.2",
+        "Version Code": "9.3",
         "Version type": "Open Source (Custom)",
         "Developer Name": "PSBDx",
         "User License Type": "Open Source",
-        "Open Source Comment": "Custom language configuration enabled."
+        "Open Source Comment": "Dynamic Storage Enabled."
     }
 
 # --- FLASK SERVER (Keep Alive) ---
@@ -59,7 +68,8 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return f"Anime Master Bot v9.2 is Running! ({CURRENT_LANGUAGE.upper()} Mode)"
+    storage_mode = "Discord Cloud DB" if USE_DISCORD_DB else "Local Server Storage"
+    return f"Anime Master Bot v9.3 is Running! ({CURRENT_LANGUAGE.upper()} Mode) | Storage: {storage_mode}"
 
 def run_flask():
     app.run(host='0.0.0.0', port=PORT)
@@ -157,6 +167,99 @@ def get_score_generic(url, json_data, key_path):
     except: pass
     return None
 
+# --- STORAGE LOGIC (NEW) ---
+
+async def load_data(bot_instance):
+    """
+    Loads data from Discord Channel or Local File based on USE_DISCORD_DB flag.
+    """
+    global BOT_DATA
+    
+    # 1. DISCORD DB MODE
+    if USE_DISCORD_DB:
+        try:
+            channel = bot_instance.get_channel(int(DSCRD_DB_ID))
+            if not channel:
+                logger.error(f"❌ Error: DSCRD_DB channel ID {DSCRD_DB_ID} not found or bot lacks access.")
+                return
+
+            # Check history for latest file
+            found_data = False
+            async for message in channel.history(limit=1):
+                if message.attachments:
+                    for att in message.attachments:
+                        if att.filename.endswith('.json'):
+                            file_data = await att.read()
+                            BOT_DATA = json.loads(file_data.decode('utf-8'))
+                            logger.info("✅ successfully connected with discord db")
+                            found_data = True
+                            break
+                if found_data: break
+            
+            if not found_data:
+                logger.info("ℹ️ Connected to Discord DB (No previous JSON file found, starting fresh).")
+        except Exception as e:
+            logger.error(f"❌ Failed to load from Discord DB: {str(e)}")
+
+    # 2. LOCAL FILE MODE
+    else:
+        try:
+            if os.path.exists("data.json"):
+                with open("data.json", "r") as f:
+                    BOT_DATA = json.load(f)
+                logger.info("✅ Loaded data from local server file.")
+            else:
+                logger.info("ℹ️ No local data file found. Starting fresh.")
+        except Exception as e:
+            logger.error(f"❌ Failed to load local data: {str(e)}")
+
+async def save_data(interaction=None):
+    """
+    Saves data to Discord Channel or Local File based on USE_DISCORD_DB flag.
+    """
+    global BOT_DATA
+    
+    # Prepare JSON
+    json_str = json.dumps(BOT_DATA, indent=4)
+    
+    # 1. DISCORD DB MODE
+    if USE_DISCORD_DB:
+        try:
+            channel = bot.get_channel(int(DSCRD_DB_ID))
+            if channel:
+                # Create in-memory file
+                file_obj = io.BytesIO(json_str.encode('utf-8'))
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                file_name = f"backup_{int(time.time())}.json"
+                
+                await channel.send(
+                    content=f"💾 **Auto-Backup** | {timestamp}",
+                    file=discord.File(file_obj, filename=file_name)
+                )
+                if interaction:
+                    await interaction.response.send_message(f"✅ **Success!** Data uploaded to Discord DB <#{DSCRD_DB_ID}>.")
+                logger.info("✅ Data saved to Discord DB.")
+            else:
+                if interaction:
+                     await interaction.response.send_message("❌ Error: Could not find DB Channel.")
+        except Exception as e:
+            logger.error(f"❌ Error saving to Discord DB: {e}")
+            if interaction:
+                await interaction.response.send_message(f"❌ Save Failed: {e}")
+
+    # 2. LOCAL FILE MODE
+    else:
+        try:
+            with open("data.json", "w") as f:
+                f.write(json_str)
+            logger.info("✅ Data saved locally.")
+            if interaction:
+                await interaction.response.send_message("✅ **Success!** Data saved to local server file.")
+        except Exception as e:
+            logger.error(f"❌ Error saving locally: {e}")
+            if interaction:
+                await interaction.response.send_message(f"❌ Local Save Failed: {e}")
+
 # --- BOT CLASS & SETUP ---
 
 class AnimeMasterBot(commands.Bot):
@@ -174,10 +277,23 @@ bot = AnimeMasterBot()
 @bot.event
 async def on_ready():
     logger.info(f'Logged in as {bot.user} (ID: {bot.user.id})')
+    
+    # --- LOAD DATA ON RESTART ---
+    await load_data(bot)
+    
     # Updated status to show the language in the status
     await bot.change_presence(activity=discord.Game(name=f"/find [anime] | {CURRENT_LANGUAGE.upper()}"))
 
 # --- ADMIN COMMANDS ---
+
+@bot.tree.command(name="backup", description="Admin: Upload/Save current bot data manually")
+async def backup_slash(interaction: discord.Interaction):
+    if interaction.user.id != ADMN_ID:
+        await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
+        return
+
+    # Trigger save
+    await save_data(interaction)
 
 @bot.tree.command(name="set_channel", description="Admin: Lock the bot to ONLY reply in this current channel.")
 async def set_channel_slash(interaction: discord.Interaction):
@@ -185,10 +301,10 @@ async def set_channel_slash(interaction: discord.Interaction):
         await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
         return
 
-    global LOCKED_CHANNEL_ID
-    LOCKED_CHANNEL_ID = interaction.channel_id
+    global BOT_DATA
+    BOT_DATA["locked_channel_id"] = interaction.channel_id
     
-    await interaction.response.send_message(f"🔒 **Locked!** I will now only reply in <#{LOCKED_CHANNEL_ID}>.")
+    await interaction.response.send_message(f"🔒 **Locked!** I will now only reply in <#{BOT_DATA['locked_channel_id']}>.")
 
 @bot.tree.command(name="unlock_all", description="Admin: Allow the bot to reply in ALL channels.")
 async def unlock_all_slash(interaction: discord.Interaction):
@@ -196,8 +312,8 @@ async def unlock_all_slash(interaction: discord.Interaction):
         await interaction.response.send_message("❌ You are not authorized to use this command.", ephemeral=True)
         return
 
-    global LOCKED_CHANNEL_ID
-    LOCKED_CHANNEL_ID = None
+    global BOT_DATA
+    BOT_DATA["locked_channel_id"] = None
     
     await interaction.response.send_message("🔓 **Unlocked!** I will now reply in all channels.")
 
@@ -205,11 +321,9 @@ async def unlock_all_slash(interaction: discord.Interaction):
 
 @bot.tree.command(name="about", description="View developer and license information")
 async def about_slash(interaction: discord.Interaction):
-    """
-    Displays the about information (Un-encrypted).
-    """
-    if LOCKED_CHANNEL_ID and interaction.channel_id != LOCKED_CHANNEL_ID:
-        await interaction.response.send_message(f"⚠️ I am restricted to <#{LOCKED_CHANNEL_ID}>.", ephemeral=True)
+    cid = BOT_DATA.get("locked_channel_id")
+    if cid and interaction.channel_id != cid:
+        await interaction.response.send_message(f"⚠️ I am restricted to <#{cid}>.", ephemeral=True)
         return
 
     # Get plain data
@@ -228,31 +342,38 @@ async def about_slash(interaction: discord.Interaction):
         else:
             embed.add_field(name=key, value=f"`{value}`", inline=True)
             
-    embed.set_footer(text="Verified Open Source Build | Version 9.2")
+    embed.set_footer(text="Verified Open Source Build | Version 9.3")
     
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="start", description="Get welcome info and help")
 async def start_slash(interaction: discord.Interaction):
-    if LOCKED_CHANNEL_ID and interaction.channel_id != LOCKED_CHANNEL_ID:
-        await interaction.response.send_message(f"⚠️ I am restricted to <#{LOCKED_CHANNEL_ID}>.", ephemeral=True)
+    cid = BOT_DATA.get("locked_channel_id")
+    if cid and interaction.channel_id != cid:
+        await interaction.response.send_message(f"⚠️ I am restricted to <#{cid}>.", ephemeral=True)
         return
 
     user_name = interaction.user.name
+    
+    # Show user which storage is active
+    storage_status = "☁️ Discord DB" if USE_DISCORD_DB else "📁 Local File"
+
     msg = (
         f"👋 Hello **{user_name}**! 🍥\n"
         f"I am your Anime Assistant.\n\n"
         f"✅ **Usage:** Type `/find` followed by an anime name.\n"
         f"✨ **Season:** You can add a specific season in the search (e.g., 'Season 2')!\n"
         f"🌐 **Language:** Currently set to **{CURRENT_LANGUAGE.upper()}**.\n"
+        f"💾 **Storage:** {storage_status}\n"
         f"I will fetch ratings, studio info, genres, and translate the description."
     )
     await interaction.response.send_message(msg)
 
 @bot.tree.command(name="sources", description="See which websites I use for data")
 async def sources_slash(interaction: discord.Interaction):
-    if LOCKED_CHANNEL_ID and interaction.channel_id != LOCKED_CHANNEL_ID:
-        await interaction.response.send_message(f"⚠️ I am restricted to <#{LOCKED_CHANNEL_ID}>.", ephemeral=True)
+    cid = BOT_DATA.get("locked_channel_id")
+    if cid and interaction.channel_id != cid:
+        await interaction.response.send_message(f"⚠️ I am restricted to <#{cid}>.", ephemeral=True)
         return
 
     embed = discord.Embed(
@@ -272,8 +393,9 @@ async def sources_slash(interaction: discord.Interaction):
 @app_commands.describe(anime_name="The name of the anime", season="Optional: The specific season (e.g., 'Season 2')")
 async def find_slash(interaction: discord.Interaction, anime_name: str, season: str = None):
     # 1. CHECK LOCK
-    if LOCKED_CHANNEL_ID and interaction.channel_id != LOCKED_CHANNEL_ID:
-        await interaction.response.send_message(f"❌ Please use this command in <#{LOCKED_CHANNEL_ID}>!", ephemeral=True)
+    cid = BOT_DATA.get("locked_channel_id")
+    if cid and interaction.channel_id != cid:
+        await interaction.response.send_message(f"❌ Please use this command in <#{cid}>!", ephemeral=True)
         return
 
     # 2. DEFER
@@ -392,7 +514,12 @@ async def check_command(ctx, cmd: str = None):
             now_bd = "Timezone Error"
         
         discord_ping = f"{int(bot.latency * 1000)}ms"
-        lock_status = f"<#{LOCKED_CHANNEL_ID}>" if LOCKED_CHANNEL_ID else "Unlocked (All Channels)"
+        
+        cid = BOT_DATA.get("locked_channel_id")
+        lock_status = f"<#{cid}>" if cid else "Unlocked (All Channels)"
+        
+        # New Storage Status
+        storage_status = f"☁️ Discord DB <#{DSCRD_DB_ID}>" if USE_DISCORD_DB else "📁 Local File"
 
         sys_report = (
             "**⚙️ System Status**\n"
@@ -400,6 +527,7 @@ async def check_command(ctx, cmd: str = None):
             f"🕒 **Server Time (BD):** {now_bd}\n"
             f"🤖 **Bot Status:** ✅ Online\n"
             f"🔒 **Restrictions:** {lock_status}\n"
+            f"💾 **Storage:** {storage_status}\n"
             f"📶 **API Latency:** {discord_ping}\n"
             f"🌐 **Language:** {CURRENT_LANGUAGE.upper()}\n"
             "-----------------------------\n"
