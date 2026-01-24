@@ -3,7 +3,7 @@
 ![Version](https://img.shields.io/badge/Version-9.3-blue?style=for-the-badge&logo=python)
 ![License](https://img.shields.io/badge/License-PSBDx_Open_Source-red?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-Online-success?style=for-the-badge)
-[![Documentation](https://img.shields.io/badge/Documentation-Check_For_More-blueviolet?style=for-the-badge)](https://blog.psbdx.xo.je/anime_master_discord_v9_2.html)
+[![Documentation](https://img.shields.io/badge/Documentation-Check_For_More-blueviolet?style=for-the-badge)](https://documentations.psbdx.rf.gd/v9_3)
 
 **Anime Master** is a comprehensive, open-source Discord bot designed for media aggregation. It retrieves detailed data from multiple authoritative sources to provide accurate ratings, streaming availability, and studio information.
 
